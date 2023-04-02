@@ -20,6 +20,7 @@ sel.register(lsock, selectors.EVENT_READ, data=None)
 
 def accept_wrapper(sock):
     conn, addr = sock.accept()  # Should be ready to read
+    pdb.set_trace()
     print(f"Accepted connection from {addr}")
     conn.setblocking(False)
     data = types.SimpleNamespace(addr=addr, inb=b"", outb=b"")
@@ -51,6 +52,7 @@ try:
     while True:
         events = sel.select(timeout=None)
         for key, mask in events:
+            pdb.set_trace()
             if key.data is None:
                 accept_wrapper(key.fileobj)
             else:
