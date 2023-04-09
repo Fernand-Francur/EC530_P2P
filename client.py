@@ -1,6 +1,5 @@
 import sys
 import socket
-import selectors
 import types
 import select
 import pdb 
