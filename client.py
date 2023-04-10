@@ -4,8 +4,10 @@ import types
 import select
 import pdb 
 
+HEAD_LEN = 10
+
 class Peer2PeerClient:
-    def __init__(self, username, discover_host=None, discover_port=None):
+    def __init__(self, username, port, ip=None, discover_host=None, discover_port=None):
         if discover_host is None:
             self.discover_host = socket.gethostname()
         else:
@@ -14,17 +16,39 @@ class Peer2PeerClient:
             self.discover_port = 60001
         else:
             self.discover_port = discover_port
-        self.discover_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.discover_socket.connect((self.discover_host,discover_port))
-        self.discover_socket.send(('1' + username).encode)
-        
-        data = self.discover_socket.recv(1024).decode()
-        
-        
-    def connect():
 
-    def send():
+        if ip is None:
+            self.ip = socket.gethostname()
+        else:
+            self.ip = ip
+        self.port = port
+        self.username = username
+        
+        
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        
+        
+        self.sock.bind((ip,port))
+        self.sock.setblocking(False)
+        self.socket_list = [self.sock]
+        
+        self.discovery_socket = socket.create_connection((self.discover_host,self.discover_port))
+        
+        my_user = self.username.encode('utf-8')
+        username_header = f"{len(my_user):<{HEAD_LEN}}".encode('utf-8')
+        self.discovery_socket.send(username_header + my_user)
+                
+                
+     def receive_request(client_socket):
+        try:
+            message_header = client_socket.recv(HEAD_LEN)
+            if not len(message_header):
+                return False
 
+            message_length = int(message_header.decode('utf-8').strip())
+            return {'header':message_header, 'data': client_socket.recv(message_length)}
+        except:
+            return False
     
 
 

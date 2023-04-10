@@ -6,7 +6,7 @@ import _thread
 import pdb
 
 PORT = 60001
-HEAD_LEN = 16
+HEAD_LEN = 10
 
 class discover:
     def __init__(self, sock=None):
@@ -50,8 +50,9 @@ class discover:
                     user = self.clients[notified_socket]
                     end_username = message["data"].decode("utf-8")
                     if end_username in self.user_sock_identify.keys():
-                        print
+                        
                     else:
+                        
                         
         
     def receive_request(client_socket):
