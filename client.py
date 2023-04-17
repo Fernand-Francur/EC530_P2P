@@ -24,22 +24,50 @@ class Peer2PeerClient:
         self.port = port
         self.username = username
         
-        
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         
-        
-        self.sock.bind((ip,port))
+        self.sock.bind((self.ip,self.port))
         self.sock.setblocking(False)
         self.socket_list = [self.sock]
+
+        self.clients = {}
+        self.user_sock = {}
         
         self.discovery_socket = socket.create_connection((self.discover_host,self.discover_port))
         
         my_user = self.username.encode('utf-8')
         username_header = f"{len(my_user):<{HEAD_LEN}}".encode('utf-8')
         self.discovery_socket.send(username_header + my_user)
+        self.socket_list.append(self.discovery_socket)
+        self.socket_list.append(sys.stdin)
+        self.sock.listen()
+        self.run()
+        
+    def run(self):
+        
+        while True:
+            rList, wList, error_list = select.select(self.socket_list,[],self.socket_list)
+            for sock in rList:
+                if sock == self.sock:
+                    
+        return 0
+
+    def listener(self):
+        return 0
+
+    def send_request(self, username, msg):
+        try:
+            end_socket = self.user_sock[username]
+        except:
+            return False
+        msg_header = f"{len(msg):<{HEAD_LEN}}".encode('utf-8')
+        bytes_sent = end_socket.send(msg_header + msg)
+        if bytes_sent < (HEAD_LEN + len(msg)):
+            return False
+        else:
+            return True
                 
-                
-     def receive_request(client_socket):
+    def receive_request(self, client_socket):
         try:
             message_header = client_socket.recv(HEAD_LEN)
             if not len(message_header):
@@ -51,6 +79,14 @@ class Peer2PeerClient:
             return False
     
 
+
+def main():
+    username = "Timo"
+    client = Peer2PeerClient(username, 60002)
+
+
+if __name__ == "__main__":
+    main()
 
 
 

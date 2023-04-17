@@ -2,6 +2,7 @@ import sys
 import socket
 import types
 import select
+import pickle
 import _thread
 import pdb
 
@@ -28,34 +29,44 @@ class discover:
         self.clients = {}
         self.user_sock_identify = {}
         
+        
         while True:
-            r_sockets, _, except_sockets = select.select(sockets_list, [], sockets_list)
-            for notified_socket in r_sockets:
-                if notified_socket == self.sock:
-                    client_socket, client_address = self.sock.accept()
-                    user = receive_message(client_socket)
-                    if user is False:
-                        continue
-                    self.socket_list.append(client_socket)
-                    self.clients[client_socket] = user
-                    self.user_sock_identify[user["data"].decode("utf-8")] = client_socket
-                    print('Accepted new connection from {}:{}, username: {}'.format(*client_address, user['data'].decode('utf-8')))
-                else:
-                    message = receive_request(notified_socket)
-                    if message is False:
-                        print('Closed connection from: {}'.format(clients[notified_socket]['data'].decode('utf-8')))
-                        self.sockets_list.remove(notified_socket)
-                        del self.clients[notified_socket]
-                        continue
-                    user = self.clients[notified_socket]
-                    end_username = message["data"].decode("utf-8")
-                    if end_username in self.user_sock_identify.keys():
-                        
+            try:
+                r_sockets, _, except_sockets = select.select(self.socket_list, [], self.socket_list)
+                for notified_socket in r_sockets:
+                    if notified_socket == self.sock:
+                        client_socket, client_address = self.sock.accept()
+                        user = self.receive_request(client_socket)
+                        if user is False:
+                            continue
+                        self.socket_list.append(client_socket)
+                        self.clients[client_socket] = user
+                        self.user_sock_identify[user["data"].decode("utf-8")] = client_address
+                        print('Accepted new connection from {}:{}, username: {}'.format(*client_address, user['data'].decode('utf-8')))
                     else:
+                        message = self.receive_request(notified_socket)
+                        if message is False:
+                            print('Closed connection from: {}'.format(self.clients[notified_socket]['data'].decode('utf-8')))
+                            self.socket_list.remove(notified_socket)
+                            del self.clients[notified_socket]
+                            continue
+                        user = self.clients[notified_socket]
+                        end_username = message["data"].decode("utf-8")
+                        if end_username in self.user_sock_identify.keys():
+                            msg = pickle.dumps(self.user_sock_identify[end_username])
+                            msg = bytes(f"{len(msg):<{HEAD_LEN}}", 'utf-8')+msg
+                            notified_socket.send(msg)
+                        else: 
+                            msg = "User " + end_username + " does not exist"
+                            msg = bytes(f"{len(msg):<{HEAD_LEN}}", 'utf-8')+msg
+                            notified_socket.send(msg)
+            except KeyboardInterrupt:
+                self.sock.close()
+                print("Server has been closed")
                         
                         
         
-    def receive_request(client_socket):
+    def receive_request(self,client_socket):
         try:
             message_header = client_socket.recv(HEAD_LEN)
             if not len(message_header):
@@ -66,3 +77,10 @@ class discover:
         except:
             return False
     
+
+def main():
+    discoveryserver = discover()
+
+
+if __name__ == "__main__":
+    main()
