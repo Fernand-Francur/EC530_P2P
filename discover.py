@@ -60,11 +60,11 @@ class discover:
                             request = (f'{"CHAT_REP":<{REQ_LEN}}').encode('utf-8')
                             if end_username in self.user_sock_identify.keys():
                                 msg = pickle.dumps(self.user_sock_identify[end_username])
-                                msg = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")+msg
+                                msg = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")+request+msg
                                 notified_socket.send(msg)
                             else: 
                                 msg = "User " + end_username + " does not exist"
-                                msg = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")+msg
+                                msg = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")+request+msg
                                 notified_socket.send(msg)
                         else:
                             print("NOT YET IMPLEMENTED")

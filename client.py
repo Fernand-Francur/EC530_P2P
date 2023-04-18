@@ -47,6 +47,11 @@ class Peer2PeerClient:
         self.run()
         
     def run(self):
+        print("P2P Session Started for User " + self.username)
+        print("Type the following options for actions")
+        print("To start new chat with another user: REQUEST *name-of-user-you-want-to-chat-with*")
+        print("Once chat is started, type messages: CHAT *name* *message*")
+        print("To close application, type: LOGOUT")
         while True:
             try:
                 rList, wList, error_list = select.select(self.socket_list,[],self.socket_list)
@@ -66,8 +71,38 @@ class Peer2PeerClient:
                             print("NOT IMPLEMENTED YET")
                     elif sock == sys.stdin:
                         msg=sys.stdin.readline()
-                        print(msg)
-                        
+                        if msg.strip() == "LOGOUT":
+                            self.sock.close()
+                            print("Server has been closed")
+                            break
+                        m = msg.split(" ",2)
+                        if m[0].strip() == "CHAT":
+                            if len(m) == 3:
+                                if m[1].strip() is in self.user_sock.keys():
+                                    new_sock = self.user_sock[m[1].strip()]
+                                    request = (f'{"CHAT_MESS":<{REQ_LEN}}').encode('utf-8')
+                                    msg = m[2].strip().encode("utf-8")
+                                    header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
+                                    new_sock.send(header+request+msg)
+                                else:
+                                    print("No chat with user "+m[1].strip()+" found.")
+
+                            else:
+                                print("User input error: " + m)
+                        elif m[0].strip() == "REQUEST":
+                            if len(m) == 2:
+                                if m[1].strip() is in self.user_sock.keys():
+                                    print("Chat already has been started with user: "+ m[1].strip())
+                                else:
+                                    request = (f'{"CHAT_REQ":<{REQ_LEN}}').encode('utf-8')
+                                    msg = m[1].strip().encode("utf-8")
+                                    header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
+                                    self.discovery_socket.send(header+request+msg)
+                            else:
+                                print("User input error: "+m)
+                        else:
+                            print("Undefined input: " +m)
+                            
                     else:
                         message = self.receive_request(sock)
                         if message is False:
@@ -81,6 +116,13 @@ class Peer2PeerClient:
                             text_message = message["data"].decode("utf-8")
                             username = user["data"].decode("utf-8")
                             sys.stdout(username + " : " + text_message)
+                        elif message["request"] == "CHAT_REP":
+                            new_sock_add = pickle.loads(message["data"])
+                            new_sock = socket.create_connection(new_sock_add)
+                            request = (f'{"CHAT_REQ":<{REQ_LEN}}').encode('utf-8')
+                            msg = m[1].strip().encode("utf-8")
+                            header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
+                            new_sock.send(header+request+msg)
                         else:
                             print("NOT YET IMPLEMENTED")
             except KeyboardInterrupt:
