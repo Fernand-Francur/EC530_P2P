@@ -8,6 +8,7 @@ import pdb
 
 PORT = 60001
 HEAD_LEN = 10
+REQ_LEN = 10
 
 class discover:
     def __init__(self, sock=None):
@@ -39,6 +40,9 @@ class discover:
                         user = self.receive_request(client_socket)
                         if user is False:
                             continue
+                        if user["request"] != "LOGIN":
+                            print("Connection without LOGIN triggered and terminated")
+                            continue
                         self.socket_list.append(client_socket)
                         self.clients[client_socket] = user
                         self.user_sock_identify[user["data"].decode("utf-8")] = client_address
@@ -51,18 +55,24 @@ class discover:
                             del self.clients[notified_socket]
                             continue
                         user = self.clients[notified_socket]
-                        end_username = message["data"].decode("utf-8")
-                        if end_username in self.user_sock_identify.keys():
-                            msg = pickle.dumps(self.user_sock_identify[end_username])
-                            msg = bytes(f"{len(msg):<{HEAD_LEN}}", 'utf-8')+msg
-                            notified_socket.send(msg)
-                        else: 
-                            msg = "User " + end_username + " does not exist"
-                            msg = bytes(f"{len(msg):<{HEAD_LEN}}", 'utf-8')+msg
-                            notified_socket.send(msg)
+                        if message["request"] == "CHAT_REQ":
+                            end_username = message["data"].decode("utf-8")
+                            request = (f'{"CHAT_REP":<{REQ_LEN}}').encode('utf-8')
+                            if end_username in self.user_sock_identify.keys():
+                                msg = pickle.dumps(self.user_sock_identify[end_username])
+                                msg = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")+msg
+                                notified_socket.send(msg)
+                            else: 
+                                msg = "User " + end_username + " does not exist"
+                                msg = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")+msg
+                                notified_socket.send(msg)
+                        else:
+                            print("NOT YET IMPLEMENTED")
             except KeyboardInterrupt:
+                #self.sock.shutdown()
                 self.sock.close()
                 print("Server has been closed")
+                break
                         
                         
         
@@ -71,9 +81,11 @@ class discover:
             message_header = client_socket.recv(HEAD_LEN)
             if not len(message_header):
                 return False
-
             message_length = int(message_header.decode('utf-8').strip())
-            return {'header':message_header, 'data': client_socket.recv(message_length)}
+            request = client_socket.recv(REQ_LEN).decode('utf-8').strip()
+            if not len(request):
+                return False
+            return {'header':message_header,'request':request, 'data': client_socket.recv(message_length)}
         except:
             return False
     
