@@ -47,6 +47,7 @@ class discover:
                         self.clients[client_socket] = user
                         self.user_sock_identify[user["data"].decode("utf-8")] = client_address
                         print('Accepted new connection from {}:{}, username: {}'.format(*client_address, user['data'].decode('utf-8')))
+                        print(client_socket.getpeername())
                     else:
                         message = self.receive_request(notified_socket)
                         if message is False:
@@ -57,15 +58,17 @@ class discover:
                         user = self.clients[notified_socket]
                         if message["request"] == "CHAT_REQ":
                             end_username = message["data"].decode("utf-8")
-                            request = (f'{"CHAT_REP":<{REQ_LEN}}').encode('utf-8')
+                            
                             if end_username in self.user_sock_identify.keys():
+                                request = (f'{"CHAT_REP":<{REQ_LEN}}')
                                 msg = pickle.dumps(self.user_sock_identify[end_username])
-                                msg = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")+request+msg
+                                msg = ((f"{len(msg):<{HEAD_LEN}}")+request).encode("utf-8")+msg
                                 notified_socket.send(msg)
-                            else: 
+                            else:
+                                request = (f'{"CHAT_REPB":<{REQ_LEN}}')
                                 msg = "User " + end_username + " does not exist"
-                                msg = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")+request+msg
-                                notified_socket.send(msg)
+                                msg = (f"{len(msg):<{HEAD_LEN}}")+request+msg
+                                notified_socket.send(msg.encode("utf-8"))
                         else:
                             print("NOT YET IMPLEMENTED")
             except KeyboardInterrupt:
