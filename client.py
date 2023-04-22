@@ -216,9 +216,14 @@ class Peer2PeerClient:
                             sent = new_sock.send(header+request+msg)
                             if sent == 0:
                                 logging.error("ERROR: Message was not sent")
-                            self.clients[new_sock] = {"data": m[1].strip().encode("utf-8")}
-                            self.user_sock[m[1].strip()] = new_sock
-                            self.socket_list.append(new_sock)
+                            else:
+                                self.clients[new_sock] = {"data": m[1].strip().encode("utf-8")}
+                                self.socket_list.append(new_sock)
+                                if m[1].strip() in self.user_sock:
+                                    if self.user_sock[m[1].strip()] == 1:
+                                        self.send_buffer(m[1].strip(),new_sock)
+                                self.user_sock[m[1].strip()] = new_sock
+                            
                         elif message["request"] == "CHAT_REPB":
                             logging.info("User not found on discovery server")
                             print("User not found on discovery server")
@@ -256,6 +261,20 @@ class Peer2PeerClient:
             return {'header':message_header,'request':request, 'data': client_socket.recv(message_length)}
         except:
             return False
+
+    def send_buffer(self,username,new_sock):
+        self.cur.execute("SELECT msg FROM "+username+" WHERE sent=0")
+        c = self.cur.fetchall()
+        for message in c:
+            msg2send = message[0]
+            request = (f'{"CHAT_MESS":<{REQ_LEN}}').encode('utf-8')
+            header = (f"{len(msg2send):<{HEAD_LEN}}").encode("utf-8")
+            sent = new_sock.send(header+request+msg2send)
+            if sent == 0:
+                logging.error("ERROR: Message was not sent")
+            else:
+                self.cur.execute("INSERT INTO "+username+" VALUES (?,?,?)",(msg,0,1))
+                self.con.commit()
 
 
 def main():
