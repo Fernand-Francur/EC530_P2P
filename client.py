@@ -33,17 +33,17 @@ class Peer2PeerClient:
         self.sock.setblocking(False)
         self.socket_list = [self.sock]
 
-        self.chatter_list = []
         self.clients = {}
         self.user_sock = {}
         
         self.discovery_socket = socket.create_connection((self.discover_host,self.discover_port))
-        
-        my_user = self.username.encode('utf-8')
-        username_header = f"{len(my_user):<{HEAD_LEN}}".encode('utf-8')
+
+        address = pickle.dumps((self.ip,self.port))
+        my_user = f'{self.username:<{USER_LEN}}'.encode('utf-8')
+        username_header = f"{len(address):<{HEAD_LEN}}".encode('utf-8')
         request = (f'{"LOGIN":<{REQ_LEN}}').encode('utf-8')
-        address = f'{self.port:<{USER_LEN}}'.encode("utf-8")
-        self.discovery_socket.send(username_header + request + my_user)
+        
+        self.discovery_socket.send(username_header + request + my_user + address)
         self.socket_list.append(self.discovery_socket)
         self.socket_list.append(sys.stdin)
         self.sock.listen()
@@ -59,6 +59,8 @@ class Peer2PeerClient:
             try:
                 rList, wList, error_list = select.select(self.socket_list,[],self.socket_list)
                 for sock in rList:
+
+                    # ACCEPTING CONNECTIONS
                     if sock == self.sock:
                         chat_socket, chat_address = self.sock.accept()
                         user = self.receive_request(chat_socket)
@@ -66,12 +68,14 @@ class Peer2PeerClient:
                             continue
                         if user["request"] == "CHAT_REQ":
                             self.socket_list.append(chat_socket)
-                            self.chatter_list.append(chat_socket)
                             self.clients[chat_socket] = user
                             self.user_sock[user["data"].decode("utf-8")] = chat_socket
                             print('Accepted new connection from {}:{}, username: {}'.format(*chat_address, user['data'].decode('utf-8')))
                         else:
                             print("NOT IMPLEMENTED YET")
+
+
+                    # IF USER PUTS IN INPUT
                     elif sock == sys.stdin:
                         msg=sys.stdin.readline()
                         if msg.strip() == "LOGOUT":
@@ -79,19 +83,31 @@ class Peer2PeerClient:
                             print("Server has been closed")
                             quit()
                         m = msg.split(" ",2)
+
+
+                        # IF USER WANTS TO SEND MESSAGE
                         if m[0].strip() == "CHAT":
                             if len(m) == 3:
                                 if m[1].strip() in self.user_sock.keys():
+                                    if self.user_sock[m[1].strip()] == None:
+                                        print("Connection to user: " + m[1].strip()+" has been closed")
+                                        print("Messages will be delivered on reconnect")
+                                        continue
                                     new_sock = self.user_sock[m[1].strip()]
                                     request = (f'{"CHAT_MESS":<{REQ_LEN}}').encode('utf-8')
                                     msg = m[2].strip().encode("utf-8")
                                     header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
-                                    new_sock.send(header+request+msg)
+                                    
+                                    sent = new_sock.send(header+request+msg)
+                                    if sent == 0:
+                                        print("ERROR: Message was not sent")
                                 else:
                                     print("No chat with user "+m[1].strip()+" found.")
 
                             else:
                                 print("User input error: ",m)
+
+                        # USER WANTS TO REQUEST NEW CHAT
                         elif m[0].strip() == "REQUEST":
                             if len(m) == 2:
                                 if m[1].strip() in self.user_sock.keys():
@@ -105,13 +121,15 @@ class Peer2PeerClient:
                                 print("User input error: ",m)
                         else:
                             print("Undefined input: ",m)
+
                             
+                    # MESSAGE RECEIVED FROM NEITHER STDIN NOR FROM NEW CONNECTION        
                     else:
                         message = self.receive_request(sock)
                         if message is False:
                             print('Closed connection from: {}'.format(self.clients[sock]['data'].decode('utf-8')))
                             self.socket_list.remove(sock)
-                            self.chatter_list.append(sock)
+                            self.user_sock[self.clients[sock]['data'].decode('utf-8')] = None
                             del self.clients[sock]
                             continue
                         if message["request"] == "CHAT_MESS":
@@ -122,15 +140,21 @@ class Peer2PeerClient:
                                 continue
                             text_message = message["data"].decode("utf-8")
                             username = user["data"].decode("utf-8")
-                            sys.stdout(username + " : " + text_message)
+                            print(username + ": " + text_message)
+
+                        # REPLY FROM DISCOVERY SERVER    
                         elif message["request"] == "CHAT_REP":
                             new_sock_add = pickle.loads(message["data"])
                             print(new_sock_add)
                             new_sock = socket.create_connection(new_sock_add)
                             request = (f'{"CHAT_REQ":<{REQ_LEN}}').encode('utf-8')
-                            msg = m[1].strip().encode("utf-8")
+                            msg = self.username.encode("utf-8")
                             header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
                             new_sock.send(header+request+msg)
+                            
+                            self.clients[new_sock] = {"data": m[1].strip().encode("utf-8")}
+                            self.user_sock[m[1].strip()] = new_sock
+                            self.socket_list.append(new_sock)
                         elif message["request"] == "CHAT_REPB":
                             print("User not found on discovery server")
                             continue

@@ -9,6 +9,7 @@ import pdb
 PORT = 60001
 HEAD_LEN = 10
 REQ_LEN = 10
+USER_LEN = 63
 
 class discover:
     def __init__(self, sock=None):
@@ -45,13 +46,15 @@ class discover:
                             continue
                         self.socket_list.append(client_socket)
                         self.clients[client_socket] = user
-                        self.user_sock_identify[user["data"].decode("utf-8")] = client_address
-                        print('Accepted new connection from {}:{}, username: {}'.format(*client_address, user['data'].decode('utf-8')))
-                        print(client_socket.getpeername())
+
+                        
+                        
+                        self.user_sock_identify[user["user"]] = pickle.loads(user["data"])
+                        print('Accepted new connection from {}:{}, username: {}'.format(*self.user_sock_identify[user["user"]], user['user']))
                     else:
                         message = self.receive_request(notified_socket)
                         if message is False:
-                            print('Closed connection from: {}'.format(self.clients[notified_socket]['data'].decode('utf-8')))
+                            print('Closed connection from: {}'.format(self.clients[notified_socket]['user']))
                             self.socket_list.remove(notified_socket)
                             del self.clients[notified_socket]
                             continue
@@ -88,6 +91,11 @@ class discover:
             request = client_socket.recv(REQ_LEN).decode('utf-8').strip()
             if not len(request):
                 return False
+            if request == "LOGIN":
+                user_name = client_socket.recv(USER_LEN).decode('utf-8').strip()
+                if not len(user_name):
+                    return False
+                return {'header':message_header,'request':request, 'user': user_name,'data': client_socket.recv(message_length)}
             return {'header':message_header,'request':request, 'data': client_socket.recv(message_length)}
         except:
             return False
