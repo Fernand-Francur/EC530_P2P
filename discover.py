@@ -30,6 +30,8 @@ class discover:
         self.socket_list = [self.sock]
         self.clients = {}
         self.user_sock_identify = {}
+        self.reverse_clients = {}
+        self.pending_list = {}
         
         
         while True:
@@ -46,16 +48,26 @@ class discover:
                             continue
                         self.socket_list.append(client_socket)
                         self.clients[client_socket] = user
-
-                        
                         
                         self.user_sock_identify[user["user"]] = pickle.loads(user["data"])
+                        self.reverse_clients[user["user"]] = client_socket
                         print('Accepted new connection from {}:{}, username: {}'.format(*self.user_sock_identify[user["user"]], user['user']))
+                        if user['user'] in self.pending_list.keys():
+                            for rec in self.pending_list[user['user']]:
+                                if self.user_sock_identify[rec] != None:
+                                    request = (f'{"CHAT_REP":<{REQ_LEN}}')
+                                    msg = pickle.dumps(self.user_sock_identify[user['user']])
+                                    msg = ((f"{len(msg):<{HEAD_LEN}}")+request).encode("utf-8")+msg
+                                    self.reverse_clients[rec].send(msg)
+
+                        
                     else:
                         message = self.receive_request(notified_socket)
                         if message is False:
                             print('Closed connection from: {}'.format(self.clients[notified_socket]['user']))
                             self.socket_list.remove(notified_socket)
+                            self.user_sock_identify[self.clients[notified_socket]['user']] = None
+                            self.reverse_clients[self.clients[notified_socket]['user']] = None
                             del self.clients[notified_socket]
                             continue
                         user = self.clients[notified_socket]
@@ -72,6 +84,13 @@ class discover:
                                 msg = "User " + end_username + " does not exist"
                                 msg = (f"{len(msg):<{HEAD_LEN}}")+request+msg
                                 notified_socket.send(msg.encode("utf-8"))
+                        elif message["request"] == "PENDING":
+                            curr_user = self.clients[notified_socket]['user']
+                            end_user = message["data"].decode("utf-8")
+                            if end_user not in self.pending_list.keys():
+                                self.pending_list[end_user] = []
+                            else:
+                                self.pending_list[end_user].append(curr_user)
                         else:
                             print("NOT YET IMPLEMENTED")
             except KeyboardInterrupt:

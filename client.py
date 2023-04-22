@@ -5,6 +5,7 @@ import select
 import pickle
 import pdb
 import logging
+import sqlite3
 
 HEAD_LEN = 10
 REQ_LEN = 10
@@ -73,6 +74,10 @@ class Peer2PeerClient:
             sys.exit()
         self.socket_list.append(self.discovery_socket)
         self.socket_list.append(sys.stdin)
+        self.database = self.username + "_chat.db"
+        self.con = sqlite3.connect(self.database)
+        self.cur = self.con.cursor()
+        
         self.sock.listen()
         self.run()
         
@@ -98,6 +103,8 @@ class Peer2PeerClient:
                             self.clients[chat_socket] = user
                             self.user_sock[user["data"].decode("utf-8")] = chat_socket
                             print('Accepted new connection from {}:{}, username: {}'.format(*chat_address, user['data'].decode('utf-8')))
+                            self.cur.execute("CREATE TABLE if not exists " +  user['data'].decode('utf-8') + " (msg TEXT, incoming INTEGER ,sent INTEGER)")
+                            self.con.commit()
                         else:
                             print("NOT IMPLEMENTED YET")
 
@@ -108,6 +115,7 @@ class Peer2PeerClient:
                         if msg.strip() == "LOGOUT":
                             self.sock.close()
                             print("Server has been closed")
+                            self.conn.close()
                             quit()
                         m = msg.split(" ",2)
 
@@ -115,19 +123,37 @@ class Peer2PeerClient:
                         # IF USER WANTS TO SEND MESSAGE
                         if m[0].strip() == "CHAT":
                             if len(m) == 3:
-                                if m[1].strip() in self.user_sock.keys():
-                                    if self.user_sock[m[1].strip()] == None:
-                                        print("Connection to user: " + m[1].strip()+" has been closed")
+                                username = m[1].strip()
+                                if username in self.user_sock.keys():
+                                    msg = m[2].strip().encode("utf-8")
+                                    if self.user_sock[username] == None:
+                                        print("Connection to user: " +username+" has been closed")
                                         print("Messages will be delivered on reconnect")
-                                    else:
-                                        new_sock = self.user_sock[m[1].strip()]
-                                        request = (f'{"CHAT_MESS":<{REQ_LEN}}').encode('utf-8')
-                                        msg = m[2].strip().encode("utf-8")
+                                        self.cur.execute("INSERT INTO "+username+" VALUES (?,?,?)",(msg,0,0))
+                                        self.con.commit()
+                                        self.user_sock[username] = 1
+                                        request = (f'{"PENDING":<{REQ_LEN}}').encode('utf-8')
+                                        msg = username.encode('utf-8')
                                         header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
+                                        sent = self.discovery_socket.send(header+request+msg)
                                         
+                                    if sent == 0:
+                                        logging.error("ERROR: Message was not sent")
+
+                                        
+                                    elif self.user_sock[username] == 1:
+                                        self.cur.execute("INSERT INTO "+username+" VALUES (?,?,?)",(msg,0,0))
+                                        self.con.commit()
+                                    else:
+                                        new_sock = self.user_sock[username]
+                                        request = (f'{"CHAT_MESS":<{REQ_LEN}}').encode('utf-8')
+                                        header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
                                         sent = new_sock.send(header+request+msg)
                                         if sent == 0:
                                             logging.error("ERROR: Message was not sent")
+                                        else:
+                                            self.cur.execute("INSERT INTO "+username+" VALUES (?,?,?)",(msg,0,1))
+                                            self.con.commit()
                                 else:
                                     logging.info("No chat with user "+m[1].strip()+" found.")
                                     print("No chat with user "+m[1].strip()+" found.")
@@ -175,6 +201,8 @@ class Peer2PeerClient:
                                 continue
                             text_message = message["data"].decode("utf-8")
                             username = user["data"].decode("utf-8")
+                            self.cur.execute("INSERT INTO "+username+" VALUES (?,?,?)",(text_message,1,1))
+                            self.con.commit()
                             print(username + ": " + text_message)
 
                         # REPLY FROM DISCOVERY SERVER    
@@ -201,6 +229,7 @@ class Peer2PeerClient:
                 #self.sock.shutdown()
                 self.sock.close()
                 print("Server has been closed")
+                self.conn.close()
                 break
 
     def send_request(self, username, msg):
