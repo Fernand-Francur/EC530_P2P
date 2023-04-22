@@ -3,14 +3,30 @@ import socket
 import types
 import select
 import pickle
-import pdb 
+import pdb
+import logging
 
 HEAD_LEN = 10
 REQ_LEN = 10
 USER_LEN = 63
 
+logging.basicConfig(
+    filename='Debug,log',
+    encoding='utf-8',
+    level=logging.WARNING)
+
 class Peer2PeerClient:
     def __init__(self, username, port, ip=None, discover_host=None, discover_port=None):
+        """
+        We have a hardcoded discovery server that these currently connect to which is 
+        my local host. To work between computers, a discovery server id must be specified.
+        This can be done by accessing a online database in the future, but for this
+        implementation, we focus on specifically the peer to peer side and offline
+        protocols. Online database is not implemented so server must be entered
+        manually at this time. 
+
+        IP for client can also be specified, but only important inputs are username and port
+        """
         if discover_host is None:
             self.discover_host = socket.gethostname()
         else:
@@ -35,15 +51,26 @@ class Peer2PeerClient:
 
         self.clients = {}
         self.user_sock = {}
-        
-        self.discovery_socket = socket.create_connection((self.discover_host,self.discover_port))
 
+        """
+        The client automatically connects to discovery socket
+        """
+        try:
+            self.discovery_socket = socket.create_connection((self.discover_host,self.discover_port))
+        except socket.error:
+            logging.error("Connection with discovery server could not be established:\n")
+            sys.exit()
+            
+            
         address = pickle.dumps((self.ip,self.port))
         my_user = f'{self.username:<{USER_LEN}}'.encode('utf-8')
         username_header = f"{len(address):<{HEAD_LEN}}".encode('utf-8')
         request = (f'{"LOGIN":<{REQ_LEN}}').encode('utf-8')
         
-        self.discovery_socket.send(username_header + request + my_user + address)
+        sent = self.discovery_socket.send(username_header + request + my_user + address)
+        if sent == 0:
+            logging.error("Could not communicate with discovery server")
+            sys.exit()
         self.socket_list.append(self.discovery_socket)
         self.socket_list.append(sys.stdin)
         self.sock.listen()
@@ -92,35 +119,42 @@ class Peer2PeerClient:
                                     if self.user_sock[m[1].strip()] == None:
                                         print("Connection to user: " + m[1].strip()+" has been closed")
                                         print("Messages will be delivered on reconnect")
-                                        continue
-                                    new_sock = self.user_sock[m[1].strip()]
-                                    request = (f'{"CHAT_MESS":<{REQ_LEN}}').encode('utf-8')
-                                    msg = m[2].strip().encode("utf-8")
-                                    header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
-                                    
-                                    sent = new_sock.send(header+request+msg)
-                                    if sent == 0:
-                                        print("ERROR: Message was not sent")
+                                    else:
+                                        new_sock = self.user_sock[m[1].strip()]
+                                        request = (f'{"CHAT_MESS":<{REQ_LEN}}').encode('utf-8')
+                                        msg = m[2].strip().encode("utf-8")
+                                        header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
+                                        
+                                        sent = new_sock.send(header+request+msg)
+                                        if sent == 0:
+                                            logging.error("ERROR: Message was not sent")
                                 else:
+                                    logging.info("No chat with user "+m[1].strip()+" found.")
                                     print("No chat with user "+m[1].strip()+" found.")
 
                             else:
-                                print("User input error: ",m)
+                                print("ERROR: Message was not sent")
+                                logging.info("User input error: ",m)
 
                         # USER WANTS TO REQUEST NEW CHAT
                         elif m[0].strip() == "REQUEST":
                             if len(m) == 2:
                                 if m[1].strip() in self.user_sock.keys():
                                     print("Chat already has been started with user: "+ m[1].strip())
+                                    logging.info("Chat already has been started with user: "+ m[1].strip())
                                 else:
                                     request = (f'{"CHAT_REQ":<{REQ_LEN}}').encode('utf-8')
                                     msg = m[1].strip().encode("utf-8")
                                     header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
-                                    self.discovery_socket.send(header+request+msg)
+                                    sent = self.discovery_socket.send(header+request+msg)
+                                    if sent == 0:
+                                        logging.error("ERROR: Message was not sent")
                             else:
-                                print("User input error: ",m)
+                                print("ERROR: Message was not sent")
+                                logging.info("User input error: ",m)
                         else:
                             print("Undefined input: ",m)
+                            logging.info("Undefined input: ",m)
 
                             
                     # MESSAGE RECEIVED FROM NEITHER STDIN NOR FROM NEW CONNECTION        
@@ -136,6 +170,7 @@ class Peer2PeerClient:
                             try:
                                 user = self.clients[sock]
                             except KeyError:
+                                logging.info("User not found in chat log")
                                 print("User not found in chat log")
                                 continue
                             text_message = message["data"].decode("utf-8")
@@ -150,12 +185,14 @@ class Peer2PeerClient:
                             request = (f'{"CHAT_REQ":<{REQ_LEN}}').encode('utf-8')
                             msg = self.username.encode("utf-8")
                             header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
-                            new_sock.send(header+request+msg)
-                            
+                            sent = new_sock.send(header+request+msg)
+                            if sent == 0:
+                                logging.error("ERROR: Message was not sent")
                             self.clients[new_sock] = {"data": m[1].strip().encode("utf-8")}
                             self.user_sock[m[1].strip()] = new_sock
                             self.socket_list.append(new_sock)
                         elif message["request"] == "CHAT_REPB":
+                            logging.info("User not found on discovery server")
                             print("User not found on discovery server")
                             continue
                         else:
@@ -165,9 +202,6 @@ class Peer2PeerClient:
                 self.sock.close()
                 print("Server has been closed")
                 break
-
-    def listener(self):
-        return 0
 
     def send_request(self, username, msg):
         try:
