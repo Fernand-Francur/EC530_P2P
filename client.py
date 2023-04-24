@@ -67,7 +67,7 @@ class Peer2PeerClient:
         my_user = f'{self.username:<{USER_LEN}}'.encode('utf-8')
         username_header = f"{len(address):<{HEAD_LEN}}".encode('utf-8')
         request = (f'{"LOGIN":<{REQ_LEN}}').encode('utf-8')
-        
+        self.sock.listen()
         sent = self.discovery_socket.send(username_header + request + my_user + address)
         if sent == 0:
             logging.error("Could not communicate with discovery server")
@@ -78,7 +78,7 @@ class Peer2PeerClient:
         self.con = sqlite3.connect(self.database)
         self.cur = self.con.cursor()
         
-        self.sock.listen()
+        
         self.run()
         
     def run(self):
@@ -103,7 +103,7 @@ class Peer2PeerClient:
                             self.clients[chat_socket] = user
                             self.user_sock[user["data"].decode("utf-8")] = chat_socket
                             print('Accepted new connection from {}:{}, username: {}'.format(*chat_address, user['data'].decode('utf-8')))
-                            self.cur.execute("CREATE TABLE if not exists " +  user['data'].decode('utf-8') + " (msg TEXT, incoming INTEGER ,sent INTEGER)")
+                            self.cur.execute("CREATE TABLE if not exists " +  user['data'].decode('utf-8') + " (msg TEXT NOT NULL, incoming INTEGER ,sent INTEGER)")
                             self.con.commit()
                         else:
                             print("NOT IMPLEMENTED YET")
@@ -115,7 +115,7 @@ class Peer2PeerClient:
                         if msg.strip() == "LOGOUT":
                             self.sock.close()
                             print("Server has been closed")
-                            self.conn.close()
+                            self.con.close()
                             quit()
                         m = msg.split(" ",2)
 
@@ -135,10 +135,12 @@ class Peer2PeerClient:
                                         request = (f'{"PENDING":<{REQ_LEN}}').encode('utf-8')
                                         msg = username.encode('utf-8')
                                         header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
+                                        print("Sending PENDING to discovery")
                                         sent = self.discovery_socket.send(header+request+msg)
                                         
-                                    if sent == 0:
-                                        logging.error("ERROR: Message was not sent")
+                                        if sent == 0:
+                                            logging.error("ERROR: Message was not sent")
+                                            continue
 
                                         
                                     elif self.user_sock[username] == 1:
@@ -214,15 +216,19 @@ class Peer2PeerClient:
                             msg = self.username.encode("utf-8")
                             header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
                             sent = new_sock.send(header+request+msg)
+                            username = message["user"]
                             if sent == 0:
                                 logging.error("ERROR: Message was not sent")
                             else:
-                                self.clients[new_sock] = {"data": m[1].strip().encode("utf-8")}
+                                self.clients[new_sock] = {"data": username.encode("utf-8")}
                                 self.socket_list.append(new_sock)
-                                if m[1].strip() in self.user_sock:
-                                    if self.user_sock[m[1].strip()] == 1:
-                                        self.send_buffer(m[1].strip(),new_sock)
-                                self.user_sock[m[1].strip()] = new_sock
+                                if username in self.user_sock:
+                                    if self.user_sock[username] == 1:
+                                        self.send_buffer(username,new_sock)
+                                else:
+                                    self.cur.execute("CREATE TABLE if not exists " +username+ " (msg TEXT NOT NULL, incoming INTEGER ,sent INTEGER)")
+                                    self.con.commit()
+                                self.user_sock[username] = new_sock
                             
                         elif message["request"] == "CHAT_REPB":
                             logging.info("User not found on discovery server")
@@ -234,7 +240,7 @@ class Peer2PeerClient:
                 #self.sock.shutdown()
                 self.sock.close()
                 print("Server has been closed")
-                self.conn.close()
+                self.con.close()
                 break
 
     def send_request(self, username, msg):
@@ -258,13 +264,21 @@ class Peer2PeerClient:
             request = client_socket.recv(REQ_LEN).decode('utf-8').strip()
             if not len(request):
                 return False
+            if request == "CHAT_REP":
+                user_name = client_socket.recv(USER_LEN).decode('utf-8').strip()
+                if not len(user_name):
+                    return False
+                return {'header':message_header,'request':request, 'user': user_name,'data': client_socket.recv(message_length)}
             return {'header':message_header,'request':request, 'data': client_socket.recv(message_length)}
         except:
             return False
 
     def send_buffer(self,username,new_sock):
+        
         self.cur.execute("SELECT msg FROM "+username+" WHERE sent=0")
         c = self.cur.fetchall()
+        print("User "+username+" has come online")
+        #print(c)
         for message in c:
             msg2send = message[0]
             request = (f'{"CHAT_MESS":<{REQ_LEN}}').encode('utf-8')
@@ -273,7 +287,7 @@ class Peer2PeerClient:
             if sent == 0:
                 logging.error("ERROR: Message was not sent")
             else:
-                self.cur.execute("INSERT INTO "+username+" VALUES (?,?,?)",(msg,0,1))
+                self.cur.execute("UPDATE "+username+" SET sent=1 WHERE msg=?",(msg2send,))
                 self.con.commit()
 
 

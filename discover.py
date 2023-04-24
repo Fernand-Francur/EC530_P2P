@@ -53,12 +53,31 @@ class discover:
                         self.reverse_clients[user["user"]] = client_socket
                         print('Accepted new connection from {}:{}, username: {}'.format(*self.user_sock_identify[user["user"]], user['user']))
                         if user['user'] in self.pending_list.keys():
+                            rm_pending = []
+                            #print("Enters if "+user['user'])
                             for rec in self.pending_list[user['user']]:
+                                #print("Enters for")
                                 if self.user_sock_identify[rec] != None:
+                                    #print("Asked by "+rec)
                                     request = (f'{"CHAT_REP":<{REQ_LEN}}')
-                                    msg = pickle.dumps(self.user_sock_identify[user['user']])
-                                    msg = ((f"{len(msg):<{HEAD_LEN}}")+request).encode("utf-8")+msg
-                                    self.reverse_clients[rec].send(msg)
+                                    username = user['user']
+                                    print(self.user_sock_identify[username])
+                                    msg = pickle.dumps(self.user_sock_identify[username])
+                                    user_name = (f'{username:<{USER_LEN}}')
+                                    msg = ((f"{len(msg):<{HEAD_LEN}}")+request+user_name).encode("utf-8")+msg
+                                    new_sock = self.reverse_clients[rec]
+                                    #print(new_sock)
+                                    #print(self.clients[new_sock])
+                                    sent = new_sock.send(msg)
+                                    if sent == 0:
+                                        logging.error("ERROR: Message was not sent")
+                                    else:
+                                        rm_pending.append(rec)
+                                else:
+                                    print("Not yet implemented")
+                            for rm_user in rm_pending:
+                                self.pending_list[user['user']].remove(rm_user)
+                                
 
                         
                     else:
@@ -77,7 +96,8 @@ class discover:
                             if end_username in self.user_sock_identify.keys():
                                 request = (f'{"CHAT_REP":<{REQ_LEN}}')
                                 msg = pickle.dumps(self.user_sock_identify[end_username])
-                                msg = ((f"{len(msg):<{HEAD_LEN}}")+request).encode("utf-8")+msg
+                                username = (f'{end_username:<{USER_LEN}}')
+                                msg = ((f"{len(msg):<{HEAD_LEN}}")+request+username).encode("utf-8")+msg
                                 notified_socket.send(msg)
                             else:
                                 request = (f'{"CHAT_REPB":<{REQ_LEN}}')
@@ -85,12 +105,13 @@ class discover:
                                 msg = (f"{len(msg):<{HEAD_LEN}}")+request+msg
                                 notified_socket.send(msg.encode("utf-8"))
                         elif message["request"] == "PENDING":
+                            
                             curr_user = self.clients[notified_socket]['user']
                             end_user = message["data"].decode("utf-8")
+                            print("Received pending from "+curr_user+" to "+end_user)
                             if end_user not in self.pending_list.keys():
                                 self.pending_list[end_user] = []
-                            else:
-                                self.pending_list[end_user].append(curr_user)
+                            self.pending_list[end_user].append(curr_user)
                         else:
                             print("NOT YET IMPLEMENTED")
             except KeyboardInterrupt:
