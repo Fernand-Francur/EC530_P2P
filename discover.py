@@ -5,6 +5,7 @@ import select
 import pickle
 import _thread
 import pdb
+import sqlite3
 
 PORT = 60001
 HEAD_LEN = 10
@@ -33,7 +34,20 @@ class discover:
         self.reverse_clients = {}
         self.pending_list = {}
         self.connections = {}
-        
+
+        self.database = "connections_database.db"
+        self.con = sqlite3.connect(self.database)
+        self.cur = self.con.cursor()
+
+        self.cur.execute("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
+        tables = self.cur.fetchall()
+        for username in tables:
+            self.connections[username[0]] = []
+            self.user_sock_identify[username[0]] = None
+            self.cur.execute("SELECT user FROM "+username[0])
+            users = self.cur.fetchall()
+            for name in users:
+                self.connections[username[0]].append(name[0])
         
         while True:
             try:
@@ -66,6 +80,8 @@ class discover:
                                         logging.error("ERROR: Could not send connection")
                         else:
                             self.connections[username] = []
+                            self.cur.execute("CREATE TABLE if not exists "+username+" (user TEXT NOT NULL)")
+                            self.con.commit()
                                 
                         if user['user'] in self.pending_list.keys():
                             rm_pending = []
@@ -108,7 +124,9 @@ class discover:
                                 self.connections[end_username].append(user['user'])
                                 self.connections[user['user']].append(end_username)
                                 notified_socket.send(msg)
-                                
+                                self.cur.execute("INSERT INTO "+end_username+" VALUES (?)",(user['user'],))
+                                self.cur.execute("INSERT INTO "+user['user']+" VALUES (?)",(end_username,))
+                                self.con.commit()
                             else:
                                 request = (f'{"CHAT_REPB":<{REQ_LEN}}')
                                 msg = "User " + end_username + " does not exist"
@@ -127,6 +145,7 @@ class discover:
             except KeyboardInterrupt:
                 #self.sock.shutdown()
                 self.sock.close()
+                self.con.close()
                 print("Server has been closed")
                 break
                         
