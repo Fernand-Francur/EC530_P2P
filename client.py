@@ -62,7 +62,9 @@ class Peer2PeerClient:
             logging.error("Connection with discovery server could not be established:\n")
             sys.exit()
             
-            
+        """
+        Send discovery server a message about who we are to join
+        """    
         address = pickle.dumps((self.ip,self.port))
         my_user = f'{self.username:<{USER_LEN}}'.encode('utf-8')
         username_header = f"{len(address):<{HEAD_LEN}}".encode('utf-8')
@@ -72,12 +74,19 @@ class Peer2PeerClient:
         if sent == 0:
             logging.error("Could not communicate with discovery server")
             sys.exit()
+
+
         self.socket_list.append(self.discovery_socket)
         self.socket_list.append(sys.stdin)
         self.database = self.username + "_chat.db"
         self.con = sqlite3.connect(self.database)
         self.cur = self.con.cursor()
-        
+
+        self.cur.execute("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
+        c = self.cur.fetchall()
+        for username in c:
+            print("Regaining connection to "+username[0])
+            self.user_sock[username[0]] = 2
         
         self.run()
         
@@ -167,16 +176,19 @@ class Peer2PeerClient:
                         # USER WANTS TO REQUEST NEW CHAT
                         elif m[0].strip() == "REQUEST":
                             if len(m) == 2:
-                                if m[1].strip() in self.user_sock.keys():
-                                    print("Chat already has been started with user: "+ m[1].strip())
-                                    logging.info("Chat already has been started with user: "+ m[1].strip())
-                                else:
-                                    request = (f'{"CHAT_REQ":<{REQ_LEN}}').encode('utf-8')
-                                    msg = m[1].strip().encode("utf-8")
-                                    header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
-                                    sent = self.discovery_socket.send(header+request+msg)
-                                    if sent == 0:
-                                        logging.error("ERROR: Message was not sent")
+                                username = m[1].strip()
+                                if username in self.user_sock.keys():
+                                    if self.user_sock[username] != 2:
+                                        print("Chat already has been started with user: "+ username)
+                                        logging.info("Chat already has been started with user: "+ username)
+                                        continue
+                                
+                                request = (f'{"CHAT_REQ":<{REQ_LEN}}').encode('utf-8')
+                                msg = username.encode("utf-8")
+                                header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
+                                sent = self.discovery_socket.send(header+request+msg)
+                                if sent == 0:
+                                    logging.error("ERROR: Message was not sent")
                             else:
                                 print("ERROR: Message was not sent")
                                 logging.info("User input error: ",m)
@@ -223,7 +235,7 @@ class Peer2PeerClient:
                                 self.clients[new_sock] = {"data": username.encode("utf-8")}
                                 self.socket_list.append(new_sock)
                                 if username in self.user_sock:
-                                    if self.user_sock[username] == 1:
+                                    if self.user_sock[username] == 1 or self.user_sock[username] == 2:
                                         self.send_buffer(username,new_sock)
                                 else:
                                     self.cur.execute("CREATE TABLE if not exists " +username+ " (msg TEXT NOT NULL, incoming INTEGER ,sent INTEGER)")

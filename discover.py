@@ -32,6 +32,7 @@ class discover:
         self.user_sock_identify = {}
         self.reverse_clients = {}
         self.pending_list = {}
+        self.connections = {}
         
         
         while True:
@@ -52,29 +53,35 @@ class discover:
                         self.user_sock_identify[user["user"]] = pickle.loads(user["data"])
                         self.reverse_clients[user["user"]] = client_socket
                         print('Accepted new connection from {}:{}, username: {}'.format(*self.user_sock_identify[user["user"]], user['user']))
+                        username = user['user']
+                        if username in self.connections.keys():
+                            request = (f'{"CHAT_REP":<{REQ_LEN}}')
+                            for connect_user in self.connections[username]:
+                                if self.user_sock_identify[connect_user] != None:
+                                    msg = pickle.dumps(self.user_sock_identify[connect_user])
+                                    user_name = (f'{connect_user:<{USER_LEN}}')
+                                    msg = ((f"{len(msg):<{HEAD_LEN}}")+request+user_name).encode("utf-8")+msg
+                                    sent = client_socket.send(msg)
+                                    if sent == 0:
+                                        logging.error("ERROR: Could not send connection")
+                        else:
+                            self.connections[username] = []
+                                
                         if user['user'] in self.pending_list.keys():
                             rm_pending = []
-                            #print("Enters if "+user['user'])
+                            request = (f'{"CHAT_REP":<{REQ_LEN}}')
+                            print(self.user_sock_identify[username])
+                            msg = pickle.dumps(self.user_sock_identify[username])
+                            user_name = (f'{username:<{USER_LEN}}')
+                            msg = ((f"{len(msg):<{HEAD_LEN}}")+request+user_name).encode("utf-8")+msg
                             for rec in self.pending_list[user['user']]:
-                                #print("Enters for")
                                 if self.user_sock_identify[rec] != None:
-                                    #print("Asked by "+rec)
-                                    request = (f'{"CHAT_REP":<{REQ_LEN}}')
-                                    username = user['user']
-                                    print(self.user_sock_identify[username])
-                                    msg = pickle.dumps(self.user_sock_identify[username])
-                                    user_name = (f'{username:<{USER_LEN}}')
-                                    msg = ((f"{len(msg):<{HEAD_LEN}}")+request+user_name).encode("utf-8")+msg
                                     new_sock = self.reverse_clients[rec]
-                                    #print(new_sock)
-                                    #print(self.clients[new_sock])
                                     sent = new_sock.send(msg)
                                     if sent == 0:
                                         logging.error("ERROR: Message was not sent")
                                     else:
                                         rm_pending.append(rec)
-                                else:
-                                    print("Not yet implemented")
                             for rm_user in rm_pending:
                                 self.pending_list[user['user']].remove(rm_user)
                                 
@@ -98,7 +105,10 @@ class discover:
                                 msg = pickle.dumps(self.user_sock_identify[end_username])
                                 username = (f'{end_username:<{USER_LEN}}')
                                 msg = ((f"{len(msg):<{HEAD_LEN}}")+request+username).encode("utf-8")+msg
+                                self.connections[end_username].append(user['user'])
+                                self.connections[user['user']].append(end_username)
                                 notified_socket.send(msg)
+                                
                             else:
                                 request = (f'{"CHAT_REPB":<{REQ_LEN}}')
                                 msg = "User " + end_username + " does not exist"
