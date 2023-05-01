@@ -13,15 +13,24 @@ REQ_LEN = 10
 USER_LEN = 63
 
 class discover:
-    def __init__(self, sock=None):
+    def __init__(self, ip=None, port=None):
         self.discoverDict = {}
         if sock is None:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         else:
             self.sock = sock
+
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR,1)
-        self.host = socket.gethostname()
-        self.port = PORT
+
+        if ip == None:   
+            self.host = socket.gethostname()
+        else:
+            self.host = ip
+
+        if host == None:
+            self.port = port
+        else:
+            self.port = PORT
         self.sock.bind((self.host,self.port))
         print("Discover server has started")
         print("Awaiting clients")
@@ -48,7 +57,13 @@ class discover:
             users = self.cur.fetchall()
             for name in users:
                 self.connections[username[0]].append(name[0])
-        
+            try:
+                
+                print("NOT IMPLEMENTED RECONNECT")
+                
+            except:
+                print("User, "+username+" is offline")
+                
         while True:
             try:
                 r_sockets, _, except_sockets = select.select(self.socket_list, [], self.socket_list)

@@ -114,6 +114,12 @@ class Peer2PeerClient:
                             print('Accepted new connection from {}:{}, username: {}'.format(*chat_address, user['data'].decode('utf-8')))
                             self.cur.execute("CREATE TABLE if not exists " +  user['data'].decode('utf-8') + " (msg TEXT NOT NULL, incoming INTEGER ,sent INTEGER)")
                             self.con.commit()
+                        elif user["request"] == "DISC_REQ":
+                            self.discovery_socket = chat_socket
+                            self.socket_list.append(chat_socket)
+                            print('Discovery server recovered from {}:{}'.format(*chat_address))
+                            
+                            print("Discovery connecting?")
                         else:
                             print("NOT IMPLEMENTED YET")
 
@@ -145,11 +151,13 @@ class Peer2PeerClient:
                                         msg = username.encode('utf-8')
                                         header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
                                         print("Sending PENDING to discovery")
-                                        sent = self.discovery_socket.send(header+request+msg)
-                                        
-                                        if sent == 0:
-                                            logging.error("ERROR: Message was not sent")
-                                            continue
+                                        if self.discovery_socket == None:
+                                            print("No connection to discovery server, pending request not sent")
+                                        else:
+                                            sent = self.discovery_socket.send(header+request+msg)
+                                            if sent == 0:
+                                                logging.error("ERROR: Message was not sent")
+                                                continue
 
                                         
                                     elif self.user_sock[username] == 1:
@@ -186,9 +194,12 @@ class Peer2PeerClient:
                                 request = (f'{"CHAT_REQ":<{REQ_LEN}}').encode('utf-8')
                                 msg = username.encode("utf-8")
                                 header = (f"{len(msg):<{HEAD_LEN}}").encode("utf-8")
-                                sent = self.discovery_socket.send(header+request+msg)
-                                if sent == 0:
-                                    logging.error("ERROR: Message was not sent")
+                                if self.discovery_socket == None:
+                                    print("Discovery server not connected. Try again later.")
+                                else:
+                                    sent = self.discovery_socket.send(header+request+msg)
+                                    if sent == 0:
+                                        logging.error("ERROR: Message was not sent")
                             else:
                                 print("ERROR: Message was not sent")
                                 logging.info("User input error: ",m)
@@ -201,11 +212,17 @@ class Peer2PeerClient:
                     else:
                         message = self.receive_request(sock)
                         if message is False:
-                            print('Closed connection from: {}'.format(self.clients[sock]['data'].decode('utf-8')))
-                            self.socket_list.remove(sock)
-                            self.user_sock[self.clients[sock]['data'].decode('utf-8')] = None
-                            del self.clients[sock]
-                            continue
+                            if sock == self.discovery_socket:
+                                print("DISCOVERY SERVER DIED")
+                                self.discovery_socket == None
+                                self.socket_list.remove(sock)
+                                continue
+                            else:
+                                print('Closed connection from: {}'.format(self.clients[sock]['data'].decode('utf-8')))
+                                self.socket_list.remove(sock)
+                                self.user_sock[self.clients[sock]['data'].decode('utf-8')] = None
+                                del self.clients[sock]
+                                continue
                         if message["request"] == "CHAT_MESS":
                             try:
                                 user = self.clients[sock]
