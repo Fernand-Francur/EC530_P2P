@@ -12,8 +12,17 @@ HEAD_LEN = 10
 REQ_LEN = 10
 USER_LEN = 63
 
+
+"""
+Discovery server to be used with clients holds connection and user data.
+Is responsible for only providing clients with information to create connections, but does
+not hold any message information. Works independently of clients. Automatically starts
+on localhost and preset port, but can be specified in start at runtime
+"""
 class discover:
     def __init__(self, ip=None, port=None):
+
+        # Socket Set up
         self.discoverDict = {}
         if sock is None:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -37,6 +46,8 @@ class discover:
         self.sock.setblocking(0)
         
         self.sock.listen()
+
+        # Setting up variables and data structures
         self.socket_list = [self.sock]
         self.clients = {}
         self.user_sock_identify = {}
@@ -44,10 +55,12 @@ class discover:
         self.pending_list = {}
         self.connections = {}
 
+        # Setting up database for connections and users
         self.database = "connections_database.db"
         self.con = sqlite3.connect(self.database)
         self.cur = self.con.cursor()
 
+        # Retrieving data on connections from databases
         self.cur.execute("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")
         tables = self.cur.fetchall()
         for username in tables:
@@ -58,12 +71,12 @@ class discover:
             for name in users:
                 self.connections[username[0]].append(name[0])
             try:
-                
                 print("NOT IMPLEMENTED RECONNECT")
                 
             except:
                 print("User, "+username+" is offline")
-                
+
+        # Starts socket queue which handles all socket communication
         while True:
             try:
                 r_sockets, _, except_sockets = select.select(self.socket_list, [], self.socket_list)
@@ -115,8 +128,6 @@ class discover:
                                         rm_pending.append(rec)
                             for rm_user in rm_pending:
                                 self.pending_list[user['user']].remove(rm_user)
-                                
-
                         
                     else:
                         message = self.receive_request(notified_socket)
@@ -158,14 +169,15 @@ class discover:
                         else:
                             print("NOT YET IMPLEMENTED")
             except KeyboardInterrupt:
-                #self.sock.shutdown()
                 self.sock.close()
                 self.con.close()
                 print("Server has been closed")
                 break
-                        
-                        
-        
+                                
+    """
+    Interprets the received packets from discovery server and other clients and outputs
+    a general format usable by the rest of the code
+    """
     def receive_request(self,client_socket):
         try:
             message_header = client_socket.recv(HEAD_LEN)
