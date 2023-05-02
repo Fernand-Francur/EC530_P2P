@@ -3,8 +3,6 @@ import socket
 import types
 import select
 import pickle
-import _thread
-import pdb
 import sqlite3
 
 PORT = 60001

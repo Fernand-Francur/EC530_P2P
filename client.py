@@ -3,7 +3,6 @@ import socket
 import types
 import select
 import pickle
-import pdb
 import logging
 import sqlite3
 
